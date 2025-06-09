@@ -1,4 +1,4 @@
-name: Build and Push to Azure Container Registry to check buildx caching
+name: Build and Push to Azure Container Registry
 
 on:
   push:
@@ -20,22 +20,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Set up proxy environment variables (optional, uncomment if needed)
+      # - name: Set up proxy environment variables
+      #   run: |
+      #     echo "HTTP_PROXY=http://proxy.example.com:8080" >> $GITHUB_ENV
+      #     echo "HTTPS_PROXY=http://proxy.example.com:8080" >> $GITHUB_ENV
+      #     echo "NO_PROXY=localhost,127.0.0.1,*.azurecr.io" >> $GITHUB_ENV
+      #   if: env.HTTP_PROXY != ''
+
       # Set up Docker Buildx
       - name: Set up Docker Buildx
+        id: buildx
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
-          buildkitd-flags: --debug
-          name: mybuilder 
-          use: true
+          buildkitd-flags: --debug  # Add --http-proxy and --https-proxy if needed
           install: true
-          bootstrap: true
-      
-      # # Create a new builder instance
-      # - name: Create builder instance
-      #   run: |
-      #     docker buildx create --name mybuilder --driver docker-container --use --bootstrap
-      #     docker buildx inspect --bootstrap
+          name: mybuilder
+          use: true
+          bootstrap: true  # Ensure builder is initialized
+
+      # Debug: Verify builder and driver
+      - name: Inspect Buildx builder
+        run: |
+          docker buildx ls
+          docker buildx inspect mybuilder --bootstrap
+        continue-on-error: true  # Continue to show logs for debugging
 
       # Login to Azure Container Registry
       - name: Login to Azure Container Registry
@@ -53,16 +63,16 @@ jobs:
           images: ${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app
           tags: |
             type=raw,value=v${{ github.run_number }}
-            
+
       # Build and push Docker image with caching
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          builder: ${{ steps.buildx.outputs.name }}  
+          builder: ${{ steps.buildx.outputs.name }}  # Reference builder from setup
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ secrets.ACR_REGISTRY }}/myapp:buildcache
-          cache-to: type=registry,ref=${{ secrets.ACR_REGISTRY }}/myapp:buildcache,mode=max
+          cache-from: type=registry,ref=${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:buildcache
+          cache-to: type=registry,ref=${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:buildcache,mode=max
