@@ -28,41 +28,6 @@ jobs:
       #     echo "NO_PROXY=localhost,127.0.0.1,*.azurecr.io" >> $GITHUB_ENV
       #   if: env.HTTP_PROXY != ''
 
-      # Set up Docker Buildx
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker-container
-          buildkitd-flags: --debug  # Add --http-proxy=http://proxy.example.com:8080 --https-proxy=http://proxy.example.com:8080 if needed
-          install: true
-          use: true
-
-      # Create and set builder explicitly
-      - name: Create and set Buildx builder
-        run: |
-          # Generate a consistent builder name
-          BUILDER_NAME=mybuilder
-          # Remove any existing builder to avoid conflicts
-          docker buildx rm $BUILDER_NAME || true
-          # Create new builder with docker-container driver
-          docker buildx create --name $BUILDER_NAME --driver docker-container --buildkitd-flags '--debug' --use
-          # Bootstrap the builder
-          docker buildx inspect $BUILDER_NAME --bootstrap
-          # Verify builder is set as default
-          docker buildx ls
-        env:
-          DOCKER_BUILDKIT: 1
-
-      # Debug: Verify builder before build
-      - name: Verify Buildx builder
-        run: |
-          echo "Listing builders:"
-          docker buildx ls
-          echo "Inspecting default builder:"
-          docker buildx inspect
-        continue-on-error: true
-
       # Login to Azure Container Registry
       - name: Login to Azure Container Registry
         uses: azure/docker-login@v1
@@ -86,9 +51,22 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          builder: mybuilder  # Use explicit builder name
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:buildcache
           cache-to: type=registry,ref=${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:buildcache,mode=max
+          # Configure Buildx builder
+          builder: ""  # Let action create a new builder
+          buildkit-driver: docker-container  # Explicitly use docker-container driver
+          buildkit-flags: --debug  # Add --http-proxy=http://proxy.example.com:8080 --https-proxy=http://proxy.example.com:8080 if needed
+          # Debug: Output builder info
+          outputs: |
+            type=local,dest=./buildx-debug
+      # Persist debug output for inspection
+      - name: Upload Buildx debug output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildx-debug
+          path: ./buildx-debug
