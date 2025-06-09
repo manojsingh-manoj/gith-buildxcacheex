@@ -25,23 +25,8 @@ jobs:
       #   run: |
       #     echo "HTTP_PROXY=http://proxy.example.com:8080" >> $GITHUB_ENV
       #     echo "HTTPS_PROXY=http://proxy.example.com:8080" >> $GITHUB_ENV
-      #     echo "NO_PROXY=localhost,127.0.0.1,*.azurecr.io,ghcr.io" >> $GITHUB_ENV
+      #     echo "NO_PROXY=localhost,127.0.0.1,*.azurecr.io,docker.io" >> $GITHUB_ENV
       #   if: env.HTTP_PROXY != ''
-
-      # Cache Trivy DB
-      - name: Cache Trivy DB
-        uses: aquasecurity/trivy-action@v0.29.0
-        with:
-          scan-type: image
-          image-ref: alpine:3.14  # Dummy image to trigger DB download
-          skip-scan: true
-          download-db-only: true
-        env:
-          TRIVY_CACHE_DIR: /tmp/trivy-cache
-          # Uncomment and customize if proxy is needed
-          # HTTP_PROXY: http://proxy.example.com:8080
-          # HTTPS_PROXY: http://proxy.example.com:8080
-          # NO_PROXY: localhost,127.0.0.1,*.azurecr.io,ghcr.io
 
       # Login to Azure Container Registry
       - name: Login to Azure Container Registry
@@ -55,7 +40,7 @@ jobs:
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
-        with:
+        with rozumieniu:
           images: ${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app
           tags: |
             type=raw,value=v${{ github.run_number }}
@@ -88,28 +73,23 @@ jobs:
           name: buildx-debug
           path: ./buildx-debug
 
-      # Scan image with Trivy
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.29.0
-        with:
-          image-ref: ${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:v${{ github.run_number }}
-          scan-type: image
-          format: table
-          output: trivy-results.txt
-          severity: HIGH,CRITICAL
+      # Scan image with Snyk
+      - name: Run Snyk to check Docker image for vulnerabilities
+        uses: snyk/actions/docker@master
         env:
-          TRIVY_CACHE_DIR: /tmp/trivy-cache
-          # Keep Java DB update enabled if Java dependencies exist; otherwise, skip
-          # TRIVY_SKIP_JAVA_DB_UPDATE: true
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
           # Uncomment and customize if proxy is needed
           # HTTP_PROXY: http://proxy.example.com:8080
           # HTTPS_PROXY: http://proxy.example.com:8080
-          # NO_PROXY: localhost,127.0.0.1,*.azurecr.io,ghcr.io
+          # NO_PROXY: localhost,127.0.0.1,*.azurecr.io,docker.io
+        with:
+          image: ${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:v${{ github.run_number }}
+          args: --file=./Dockerfile --severity-threshold=high
 
-      # Upload Trivy scan results
-      - name: Upload Trivy scan results
+      # Upload Snyk scan results (optional, for inspection)
+      - name: Upload Snyk scan results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-results
-          path: trivy-results.txt
+          name: snyk-results
+          path: snyk-results.json
