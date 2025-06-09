@@ -19,22 +19,33 @@ jobs:
       # Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      # Install Trivy
-      - name: Install Trivy
-        uses: aquasecurity/trivy-action@v0.29.0
 
-      # Set up proxy environment variables (optional, uncomment if needed)
+      # Set up proxy environment variables (optional, uncomment and customize if needed)
       # - name: Set up proxy environment variables
       #   run: |
       #     echo "HTTP_PROXY=http://proxy.example.com:8080" >> $GITHUB_ENV
       #     echo "HTTPS_PROXY=http://proxy.example.com:8080" >> $GITHUB_ENV
-      #     echo "NO_PROXY=localhost,127.0.0.1,*.azurecr.io" >> $GITHUB_ENV
+      #     echo "NO_PROXY=localhost,127.0.0.1,*.azurecr.io,ghcr.io" >> $GITHUB_ENV
       #   if: env.HTTP_PROXY != ''
+
+      # Cache Trivy DB
+      - name: Cache Trivy DB
+        uses: aquasecurity/trivy-action@v0.29.0
+        with:
+          scan-type: image
+          image-ref: alpine:3.14  # Dummy image to trigger DB download
+          skip-scan: true
+          download-db-only: true
+        env:
+          TRIVY_CACHE_DIR: /tmp/trivy-cache
+          # Uncomment and customize if proxy is needed
+          # HTTP_PROXY: http://proxy.example.com:8080
+          # HTTPS_PROXY: http://proxy.example.com:8080
+          # NO_PROXY: localhost,127.0.0.1,*.azurecr.io,ghcr.io
 
       # Login to Azure Container Registry
       - name: Login to Azure Container Registry
-        uses: azure/docker-login@v1
+        uses: azure/docker-login@v2
         with:
           login-server: ${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io
           username: ${{ secrets.ACR_USERNAME }}
@@ -51,26 +62,54 @@ jobs:
 
       # Build and push Docker image with caching
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          builder: ${{ steps.buildx.outputs.name }}  # Reference builder from setup
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:buildcache
+          cache-to: type=registry,ref=${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:buildcache,mode=max
+          # Configure Buildx builder
+          builder: ""  # Let action create a new builder
+          buildkit-driver: docker-container  # Use docker-container driver
+          buildkit-flags: --debug  # Add --http-proxy=http://proxy.example.com:8080 --https-proxy=http://proxy.example.com:8080 if needed
+          # Debug output
+          outputs: |
+            type=local,dest=./buildx-debug
 
-      # # Scan the pushed Docker image with Trivy
-      # - name: Scan image for vulnerabilities with Trivy
-      #   uses: aquasecurity/trivy-action@v0.28.0
-      #   with:
-      #     image-ref: ${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:v${{ github.run_number }}
-      #     format: json
-      #     output: trivy-report.json
+      # Upload Buildx debug output
+      - name: Upload Buildx debug output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildx-debug
+          path: ./buildx-debug
 
-      # # Upload Trivy scan report as artifact
-      # - name: Upload Trivy report
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: trivy-vulnerability-report
-      #     path: trivy-report.json
+      # Scan image with Trivy
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.29.0
+        with:
+          image-ref: ${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:v${{ github.run_number }}
+          scan-type: image
+          format: table
+          output: trivy-results.txt
+          severity: HIGH,CRITICAL
+        env:
+          TRIVY_CACHE_DIR: /tmp/trivy-cache
+          # Keep Java DB update enabled if Java dependencies exist; otherwise, skip
+          # TRIVY_SKIP_JAVA_DB_UPDATE: true
+          # Uncomment and customize if proxy is needed
+          # HTTP_PROXY: http://proxy.example.com:8080
+          # HTTPS_PROXY: http://proxy.example.com:8080
+          # NO_PROXY: localhost,127.0.0.1,*.azurecr.io,ghcr.io
+
+      # Upload Trivy scan results
+      - name: Upload Trivy scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-results
+          path: trivy-results.txt
