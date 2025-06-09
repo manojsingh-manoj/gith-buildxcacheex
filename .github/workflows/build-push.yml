@@ -38,12 +38,30 @@ jobs:
           install: true
           use: true
 
-      # Debug: Verify builder and driver
-      - name: Inspect Buildx builder
+      # Create and set builder explicitly
+      - name: Create and set Buildx builder
         run: |
+          # Generate a consistent builder name
+          BUILDER_NAME=mybuilder
+          # Remove any existing builder to avoid conflicts
+          docker buildx rm $BUILDER_NAME || true
+          # Create new builder with docker-container driver
+          docker buildx create --name $BUILDER_NAME --driver docker-container --buildkitd-flags '--debug' --use
+          # Bootstrap the builder
+          docker buildx inspect $BUILDER_NAME --bootstrap
+          # Verify builder is set as default
           docker buildx ls
-          docker buildx inspect --bootstrap
-        continue-on-error: true  # Continue to show logs for debugging
+        env:
+          DOCKER_BUILDKIT: 1
+
+      # Debug: Verify builder before build
+      - name: Verify Buildx builder
+        run: |
+          echo "Listing builders:"
+          docker buildx ls
+          echo "Inspecting default builder:"
+          docker buildx inspect
+        continue-on-error: true
 
       # Login to Azure Container Registry
       - name: Login to Azure Container Registry
@@ -68,7 +86,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          builder: ${{ steps.buildx.outputs.name }}  # Reference builder from setup
+          builder: mybuilder  # Use explicit builder name
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
