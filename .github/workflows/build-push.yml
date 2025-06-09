@@ -36,14 +36,15 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      # Extract metadata for Docker
+     # Extract metadata for Docker
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
-        with rozumieniu:
+        with:
           images: ${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app
           tags: |
             type=raw,value=v${{ github.run_number }}
+            
 
       # Build and push Docker image with caching
       - name: Build and push Docker image
