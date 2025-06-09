@@ -25,6 +25,12 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
+      
+      # Create a new builder instance
+      - name: Create builder instance
+        run: |
+          docker buildx create --name mybuilder --driver docker-container --use --bootstrap
+          docker buildx inspect --bootstrap
 
       # Login to Azure Container Registry
       - name: Login to Azure Container Registry
