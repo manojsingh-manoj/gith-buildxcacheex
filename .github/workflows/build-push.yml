@@ -22,7 +22,7 @@ jobs:
       
       # Install Trivy
       - name: Install Trivy
-        uses: aquasecurity/trivy-action@v0.14.0
+        uses: aquasecurity/trivy-action@v0.28.0
 
       # Set up proxy environment variables (optional, uncomment if needed)
       # - name: Set up proxy environment variables
