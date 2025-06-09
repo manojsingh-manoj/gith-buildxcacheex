@@ -19,6 +19,10 @@ jobs:
       # Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      # Install Trivy
+      - name: Install Trivy
+        uses: aquasecurity/trivy-action@v0.14.0
 
       # Set up proxy environment variables (optional, uncomment if needed)
       # - name: Set up proxy environment variables
@@ -51,22 +55,22 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          builder: ${{ steps.buildx.outputs.name }}  # Reference builder from setup
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:buildcache
-          cache-to: type=registry,ref=${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:buildcache,mode=max
-          # Configure Buildx builder
-          builder: ""  # Let action create a new builder
-          buildkit-driver: docker-container  # Explicitly use docker-container driver
-          buildkit-flags: --debug  # Add --http-proxy=http://proxy.example.com:8080 --https-proxy=http://proxy.example.com:8080 if needed
-          # Debug: Output builder info
-          outputs: |
-            type=local,dest=./buildx-debug
-      # Persist debug output for inspection
-      - name: Upload Buildx debug output
-        if: always()
+
+      # Scan the pushed Docker image with Trivy
+      - name: Scan image for vulnerabilities with Trivy
+        uses: aquasecurity/trivy-action@v0.14.0
+        with:
+          image-ref: ${{ secrets.ACR_REGISTRY_NAME }}.azurecr.io/simple-node-app:v${{ github.run_number }}
+          format: json
+          output: trivy-report.json
+
+      # Upload Trivy scan report as artifact
+      - name: Upload Trivy report
         uses: actions/upload-artifact@v4
         with:
-          name: buildx-debug
-          path: ./buildx-debug
+          name: trivy-vulnerability-report
+          path: trivy-report.json
