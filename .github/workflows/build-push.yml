@@ -26,9 +26,9 @@ jobs:
         with:
           driver: docker-container
           buildkitd-flags: --debug
-          install: true
           name: mybuilder 
           use: true
+          install: true
       
       # # Create a new builder instance
       # - name: Create builder instance
