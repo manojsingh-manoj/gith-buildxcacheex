@@ -34,17 +34,15 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
-          buildkitd-flags: --debug  # Add --http-proxy and --https-proxy if needed
+          buildkitd-flags: --debug  # Add --http-proxy=http://proxy.example.com:8080 --https-proxy=http://proxy.example.com:8080 if needed
           install: true
-          name: mybuilder
           use: true
-          bootstrap: true  # Ensure builder is initialized
 
       # Debug: Verify builder and driver
       - name: Inspect Buildx builder
         run: |
           docker buildx ls
-          docker buildx inspect mybuilder --bootstrap
+          docker buildx inspect --bootstrap
         continue-on-error: true  # Continue to show logs for debugging
 
       # Login to Azure Container Registry
